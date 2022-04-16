@@ -4,16 +4,21 @@ import yaml
 import argparse
 
 from loguru import logger
+from datetime import datetime
 from mutation.genetic_algorithm import GeneticMutator
 from simulation.run_parse import Runner
 
-level = "DEBUG"
+level = "INFO"
 logger.configure(handlers=[{"sink": sys.stderr, "level": level}]) # TODO: fix file output
 
 class Fuzzer(object):
 
     def __init__(self, cfgs):
+        now = datetime.now()
+        date_time = now.strftime("%m-%d-%Y-%H-%M-%S")
+
         self.cfgs = cfgs
+        cfgs['output_path'] = cfgs['output_path'] + '-at-' + date_time
         self.output_path = cfgs['output_path']
         self.scenario_name = os.path.basename(cfgs['scenario_env_json']).split('.')[0]
 
@@ -28,6 +33,7 @@ class Fuzzer(object):
         self.runner = Runner(cfgs['scenario_env_json'],
                              self.output_path,
                              self.cfgs['total_sim_time'],
+                             self.cfgs['default_record_folder'],
                              self.cfgs['lgsvl_map'],
                              self.cfgs['apollo_map'])
         self.mutation_runner = GeneticMutator(self.runner, self.output_path, self.scenario_name, cfgs['bounds'], cfgs['p_mutation'], cfgs['p_crossover'], cfgs['pop_size'], cfgs['npc_size'], cfgs['time_size'], cfgs['max_gen'])
@@ -44,7 +50,7 @@ class Fuzzer(object):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Apollo AV-Fuzzer Testing.')
-    parser.add_argument('--config', type=str, help='Test config yaml file.', default='/home/cmf/apollo/apollo6.0/apollo/AV-Fuzzer/configs/config_debug.yaml')
+    parser.add_argument('--config', type=str, help='Test config yaml file.', default='configs/config_ds_1.yaml')
     args = parser.parse_args()
 
     yaml_file = args.config

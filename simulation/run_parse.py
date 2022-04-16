@@ -26,7 +26,7 @@ def clear_and_create(folder_path):
 
 class Runner(object):
 
-    def __init__(self, scenario_env_json, output_path, total_sim_time, lgsvl_map = 'SanFrancisco_correct', apollo_map = 'SanFrancisco'):
+    def __init__(self, scenario_env_json, output_path, total_sim_time, default_record_folder, lgsvl_map = 'SanFrancisco_correct', apollo_map = 'SanFrancisco'):
         self.global_id = 0
         self.scenario_env_json = scenario_env_json
         self.scenario_name = os.path.basename(scenario_env_json).split('.')[0]
@@ -35,8 +35,8 @@ class Runner(object):
         self.RESULT_FOLDER = 'results'
         self.RECORD_FOLDER = 'records'
 
-        self.default_record_folder = '/apollo/data/bag'
-        logger.info('Default record path: ' + self.default_record_folder)
+        self.default_record_folder = default_record_folder
+        logger.info('Default record path: ' + str(self.default_record_folder))
 
         self.scenario_path = os.path.join(output_path, self.scenario_name, self.SCENARIO_FOLDER)
         self.result_path = os.path.join(output_path, self.scenario_name, self.RESULT_FOLDER)
@@ -48,9 +48,9 @@ class Runner(object):
 
         self.sim = Simulator(self.default_record_folder, self.record_path, total_sim_time, lgsvl_map, apollo_map) # save record to records/scenario_name/scenario_id
         
-        self.collision_log = os.path.join(output_path, self.scenario_name, 'collision.log')
-        if os.path.exists(self.collision_log):
-            os.remove(self.collision_log)
+        self.runner_log = os.path.join(output_path, self.scenario_name, 'runner.log')
+        if os.path.exists(self.runner_log):
+            os.remove(self.runner_log)
 
     def run(self, scenario_data):
         scenario_id = 'scenario_' + str(self.global_id)
@@ -61,18 +61,25 @@ class Runner(object):
         # TODO: add test log, to record test results.
         
         if sim_result['fault'] == 'npc':
-            with open(self.collision_log, 'a') as f:
+            with open(self.runner_log, 'a') as f:
                 f.write(str(scenario_id) + ' ' + 'npc_fault')
                 f.write('\n')
-            logger.info('Record ' + scenario_id + ' to ' + self.collision_log)
+            logger.info(' === Simulation Result: Collision NPC Fault')
         elif sim_result['fault'] == 'ego':
-            with open(self.collision_log, 'a') as f:
+            with open(self.runner_log, 'a') as f:
                 f.write(str(scenario_id) + ' ' + 'ego_fault')
                 f.write('\n')
-            logger.info('Record ' + scenario_id + ' to ' + self.collision_log)
+            logger.info(' === Simulation Result: Collision Ego Fault')
+        else:
+            with open(self.runner_log, 'a') as f:
+                f.write(str(scenario_id) + ' ' + 'normal')
+                f.write('\n')
+            logger.info(' === Simulation Result: Normal')
+            
         
         self.global_id += 1
-        logger.info(sim_result)
+        logger.info(' === Simulation Result: ' + str(sim_result))
+        logger.info(' === Record ' + scenario_id + ' to ' + self.runner_log)
         return float(sim_result['fitness']), scenario_id
 
     def _run_scenario(self, scenario_id, scenario_data):

@@ -78,14 +78,14 @@ class Simulator(object):
         except Exception as e:
             logger.error('Connect LGSVL wrong: ' + '127.0.0.1:8181')
             logger.error(e.message)
-        logger.info(' --- Connected LGSVL 127.0.0.1:8181')
+        logger.info('Connected LGSVL 127.0.0.1:8181')
 
     def load_map(self, mapName="SanFrancisco_correct"):
         if self.sim.current_scene == mapName:
            self.sim.reset()
         else:
            self.sim.load(mapName)
-        logger.info(' --- Loaded map: ' + mapName)
+        logger.info('Loaded map: ' + mapName)
     
     def load_json(self, json_file):
         self.data_prime = json.load(open(json_file))
@@ -216,8 +216,7 @@ class Simulator(object):
                 if deltaD < minDeltaD:
                     minDeltaD = deltaD # Find the min deltaD over time slices for each NPC as the fitness
                 hitCounter += 1
-       logger.info(deltaDlist)
-       logger.info(" *** minDeltaD is " + str(minDeltaD) + " *** ")
+       logger.info(" --- minDeltaD: " + str(minDeltaD))
 
        minD = self.maxint
        for npc in dList: # ith NPC
@@ -228,8 +227,7 @@ class Simulator(object):
                 if d < minD:
                     minD = d
                 hitCounter += 1
-       logger.info(dList)
-       logger.info(" *** minD is " + str(minD) + " *** ")
+       logger.info(" --- minD: " + str(minD))
 
        fitness = 0.5 * minD + 0.5 * minDeltaD
 
@@ -250,9 +248,9 @@ class Simulator(object):
         time_slice_size = len(scenario_obj[0])
         mutated_npc_num = len(scenario_obj)
 
-        logger.info(" --- Sim mutated npc size: " + str(len(self.mutated_npc_list)))
-        logger.info(' --- Config mutated npc size: ' + str(mutated_npc_num))
-        logger.info(' --- Config fixed npc size: ' + str(len(self.fixed_npc_list)))
+        logger.debug(" --- Sim mutated npc size: " + str(len(self.mutated_npc_list)))
+        logger.debug(' --- Config mutated npc size: ' + str(mutated_npc_num))
+        logger.debug(' --- Config fixed npc size: ' + str(len(self.fixed_npc_list)))
 
         assert mutated_npc_num == len(self.mutated_npc_list)
         
@@ -265,7 +263,6 @@ class Simulator(object):
         def on_collision(agent1, agent2, contact):
             #util.print_debug(" --- On Collision, ego speed: " + str(agent1.state.speed) + ", NPC speed: " + str(agent2.state.speed))
             if self.isHit:
-                self.sim.stop()
                 return
             
             self.isHit = True
@@ -273,7 +270,6 @@ class Simulator(object):
             if agent2 is None or agent1 is None:
                 self.isEgoFault = True
                 logger.info(" --- Hit road obstacle --- ")
-                self.sim.stop()
                 return
 
             apollo = agent1
@@ -289,19 +285,18 @@ class Simulator(object):
             
             if apollo.state.speed <= 0.005:
                self.isEgoFault = False
-               self.sim.stop()
                return
 
             self.isEgoFault = liability.ego_collision_fault(apollo, npcVehicle, self.cross_lines)
-            self.sim.stop()
             
                     
         self.ego.on_collision(on_collision)
         self.ego.connect_bridge(address='127.0.0.1', port=9090) #address, port
         self.dv.set_ego(self.ego)
-        util.enable_modules(self.dv, self.dy_modules)
+        if self.default_record_folder:
+            util.enable_modules(self.dv, self.dy_modules)
         self.dv.set_destination(x_long_east=self.destination.x, z_lat_north=self.destination.z)
-        logger.info(' --- destination: ' + str(self.destination.x) + ',' + str(self.destination.z))
+        logger.debug(' --- destination: ' + str(self.destination.x) + ',' + str(self.destination.z))
         time.sleep(1)
 
         for npc in self.mutated_npc_list:
@@ -330,21 +325,6 @@ class Simulator(object):
                     npc.change_lane(False)
                 i += 1
 
-            # Stop if there is accident
-            # 1 yellow line
-            for yellow_line in self.yellow_lines:
-                if liability.ego_yellow_line_fault(self.ego, yellow_line):
-                    self.isEgoFault = True
-                    logger.info('Hit yellow line')
-                    break
-            
-            # 2 edge line
-            for edge_line in self.edge_lines:
-                if liability.ego_edge_line_fault(self.ego, edge_line):
-                    self.isEgoFault = True
-                    logger.error('Hit edge line')
-                    break
-
             if self.isEgoFault:
                 self.isHit = True
             
@@ -360,6 +340,22 @@ class Simulator(object):
             npcDAtTList = [0 for i in range(mutated_npc_num)]
 
             for j in range(0, int(action_change_freq) * 4):
+
+                # Stop if there is accident
+                # 1 yellow line
+                for yellow_line in self.yellow_lines:
+                    if liability.ego_yellow_line_fault(self.ego, yellow_line):
+                        self.isEgoFault = True
+                        logger.info(' --- Hit yellow line')
+                        break
+                
+                # 2 edge line
+                for edge_line in self.edge_lines:
+                    if liability.ego_edge_line_fault(self.ego, edge_line):
+                        self.isEgoFault = True
+                        logger.info(' --- Hit edge line')
+                        break
+                    
                 k = 0 # k th npc
                 for npc in self.mutated_npc_list:
                     # Update delta D
@@ -375,15 +371,29 @@ class Simulator(object):
                     npcDAtTList[k] = minD
 
                     k += 1
+                
+                if self.isEgoFault:
+                    self.isHit = True
+                
+                if self.isHit:
+                    break
 
                 self.sim.run(0.25)
 
             ####################################    
-            k = 0 # kth npc
+            k = 0 # kth npc 
             for npc in self.mutated_npc_list:
                 deltaDList[k][t] = npcDeltaAtTList[k]
                 dList[k][t] = npcDAtTList[k]
                 k += 1
+        
+        if self.default_record_folder:
+            util.disnable_modules(self.dv, self.dy_modules)
+            time.sleep(0.5)
+
+        # check new folder and move -> save folder
+        if self.default_record_folder:
+            util.check_rename_record(self.default_record_folder, self.target_record_folder, case_id)
 
         # Process deltaDList and compute fitness scores
         # Make sure it is not 0, cannot divide by 0 in GA

@@ -1,0 +1,48 @@
+{"agents": {
+  "ego": {
+    "position": {
+      "x": -0.6,
+      "y": 10.2,
+      "z": 0.5
+    },
+    "destination": {
+      "method": "forward_right",
+      "value": {
+        "v1": 300,
+        "v2": -1,
+        "v3": 0
+      }
+    }
+  },
+  "npcs": [
+    {
+      "type": "Sedan",
+      "goal": "mutated",
+      "position": {
+        "x": 11.7,
+        "y": 10.2,
+        "z": -11.2
+      }
+    },
+    {
+      "type": "SUV",
+      "goal": "mutated",
+      "position": {
+        "x": 10.1,
+        "y": 10.2,
+        "z": -4.4
+      }
+    }
+  ]},
+  "lines" : {
+    "yellow_lines" : [
+      [[10.0, -12.6], [-164.2, 154.0]]
+    ],
+    "cross_lines" :  [
+      [[12.5, -9.3], [-161.3, 156.7]]
+    ],
+    "edge_lines" :  [
+      [[15.5, -6.7], [-158.6, 159.7]]
+    ]
+  }
+}

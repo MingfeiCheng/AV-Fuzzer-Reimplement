@@ -1,0 +1,16 @@
+scenario_env_json: data/ds_1.json
+output_path: outputs/ds_1 # absolute path
+lgsvl_map: SanFrancisco_correct
+apollo_map: SanFrancisco
+
+pop_size: 2
+npc_size: 2
+time_size: 10
+bounds: [[0, 30], [0, 3]]
+total_sim_time: 15
+p_mutation: 0.4
+p_crossover: 0.4
+max_gen: 1
+
+# apollo reltaed path config
+default_record_folder: False # False means ignoring records
