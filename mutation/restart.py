@@ -25,7 +25,7 @@ def get_all_checkpoints(ck_path):
 
     return pre_pop_pool
 
-def generate_restart_scenarios(runner, ck_path, scenario_num, bounds):
+def generate_restart_scenarios(runner, ga_logger, global_iter, ck_path, scenario_num, bounds):
 	
 	pre_pop_pool = get_all_checkpoints(ck_path)			 
 	
@@ -49,11 +49,7 @@ def generate_restart_scenarios(runner, ck_path, scenario_num, bounds):
 				scenario_data[n_s][t_s].append(v)
 				scenario_data[n_s][t_s].append(a)
 
-		# 2. run simulator -> get outputs
-		fitness_score, scenario_id = runner.run(scenario_data)
-		# 3. generate new elements
-		new_element = CorpusElement(scenario_id, scenario_data, fitness_score)
-		new_pop_candidate.append(new_element)
+		new_pop_candidate.append(scenario_data)
 
 	# Go through every scenario
 
@@ -63,7 +59,7 @@ def generate_restart_scenarios(runner, ck_path, scenario_num, bounds):
 			simi_pop = 0
 			for k in range(scenario_size):
 				# TODO
-				scenario1 = new_pop_candidate[i].scenario
+				scenario1 = new_pop_candidate[i]
 				scenario2 = pre_pop_pool[j][k].scenario
 				simi = tools.get_similarity_between_scenarios(scenario1, scenario2)
 				simi_pop += simi
@@ -84,9 +80,18 @@ def generate_restart_scenarios(runner, ck_path, scenario_num, bounds):
 		if j == pop_size:
 			break
 		# run pop
-		fitness, scenario_id = runner.run(new_pop_candidate[i].scenario)
-		new_pop_candidate[i].fitness = fitness
-		new_scenario_list.append(new_pop_candidate[i])
+		fitness, scenario_id = runner.run(new_pop_candidate[i])
+
+		new_element = CorpusElement(scenario_id, new_pop_candidate[i], fitness)
+
+		new_scenario_list.append(new_element)
+		
+		with open(ga_logger, 'a') as f:
+			f.write('global_' + str(global_iter) + '_restart_' + str(j))
+			f.write(',')
+			f.write(scenario_id)
+			f.write('\n')
+		
 		j += 1
 
 	return new_scenario_list

@@ -244,7 +244,7 @@ class GeneticMutator(object):
             if noprogress:
                 logger.info("    ### Restart Based on Generation: " + str(i) + " ###    ")
                 oldCkName = self.ga_checkpoints_path
-                newPop = restart.generate_restart_scenarios(self.runner, oldCkName, 1000, self.bounds)
+                newPop = restart.generate_restart_scenarios(self.runner, self.ga_log, i, oldCkName, 1000, self.bounds)
                 self.pop = copy.deepcopy(newPop)
                 self.hasRestarted = True
                 best, self.bestIndex = self.find_best()
@@ -271,7 +271,7 @@ class GeneticMutator(object):
                     logger.debug(" === Start of Local Iterative Search === ")
                     # Increase mutation rate a little bit to jump out of local maxima
                     local_output_path = os.path.join(self.output_path, 'local_ga', 'local_' + str(i))
-                    lis = LocalGeneticMutator(self.runner, local_output_path, self.scenario_name, self.bounds, self.pm * 1.5, self.pc, self.pop_size, self.NPC_size, self.time_size, self.numOfGenInLis)
+                    lis = LocalGeneticMutator(self.runner, local_output_path, i, self.ga_log, self.progress_log, self.scenario_name, self.bounds, self.pm * 1.5, self.pc, self.pop_size, self.NPC_size, self.time_size, self.numOfGenInLis)
                     lis.setLisPop(self.g_best)
                     lisBestChs = lis.process()
                     logger.debug(" --- Best fitness in LIS: " + str(lisBestChs.fitness))
