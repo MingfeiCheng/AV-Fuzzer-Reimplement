@@ -36,7 +36,7 @@ class Fuzzer(object):
                              self.cfgs['default_record_folder'],
                              self.cfgs['lgsvl_map'],
                              self.cfgs['apollo_map'])
-        self.mutation_runner = GeneticMutator(self.runner, self.output_path, self.scenario_name, cfgs['bounds'], cfgs['p_mutation'], cfgs['p_crossover'], cfgs['pop_size'], cfgs['npc_size'], cfgs['time_size'], cfgs['max_gen'])
+        self.mutation_runner = GeneticMutator(self.runner, self.cfgs['selection'], self.output_path, self.scenario_name, cfgs['bounds'], cfgs['p_mutation'], cfgs['p_crossover'], cfgs['pop_size'], cfgs['npc_size'], cfgs['time_size'], cfgs['max_gen'])
         self.mutation_runner.init_pop()
         logger.info('Initilized Genetic Mutator.')
 
