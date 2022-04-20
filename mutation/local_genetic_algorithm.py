@@ -9,7 +9,7 @@ from loguru import logger
 from mutation import restart
 
 class LocalGeneticMutator(object):
-    def __init__(self, runner, output_path, global_iter, ga_logger, progress_logger, scenario_name, bounds, pm, pc, pop_size, NPC_size, time_size, max_gen):
+    def __init__(self, runner, selection, output_path, global_iter, ga_logger, progress_logger, scenario_name, bounds, pm, pc, pop_size, NPC_size, time_size, max_gen):
         self.pop = []
         self.bounds = bounds                # The value ranges of the inner most elements
         self.pm = pm
@@ -30,6 +30,7 @@ class LocalGeneticMutator(object):
         self.bestYAfterRestart = 0
 
         self.runner = runner
+        self.selection = selection
         self.scenario_name = scenario_name
         self.output_path = output_path
         self.ga_checkpoints_path = os.path.join(self.output_path, self.scenario_name, 'checkpoints_ga')
@@ -76,8 +77,8 @@ class LocalGeneticMutator(object):
                 pop_j = self.pop[j]
 
                 # Record which chromosomes have been touched
-                self.touched_chs.append(self.pop[i])
-                self.touched_chs.append(self.pop[j])
+                self.touched_chs.append(i)
+                self.touched_chs.append(j)
 
                 # Every time we only switch one NPC between scenarios
                 # select cross index
@@ -93,7 +94,7 @@ class LocalGeneticMutator(object):
         i = 0
         while i < len(self.pop) :
             eachChs = self.pop[i]
-            i += 1
+            
             if self.pm >= random.random():
                 
                 beforeMutation = copy.deepcopy(eachChs)
@@ -102,7 +103,7 @@ class LocalGeneticMutator(object):
                 time_index = random.randint(0, self.time_size - 1)
 
                 # Record which chromosomes have been touched
-                self.touched_chs.append(eachChs)
+                self.touched_chs.append(i)
                 actionIndex = random.randint(0, 1)
                 
                 if actionIndex == 0:
@@ -111,19 +112,28 @@ class LocalGeneticMutator(object):
                 elif actionIndex == 1:
                     # Change direction
                     eachChs.scenario[npc_index][time_index][1] = random.randrange(self.bounds[1][0], self.bounds[1][1])
-
+            i += 1
+        
+        logger.info('Generate ' + str(len(self.touched_chs)) + ' mutated scenarios')
         # Only run simulation for the chromosomes that are touched in this generation
-        for eachChs in self.touched_chs:
-            
+        self.touched_chs = set(self.touched_chs)
+        for i in self.touched_chs:
+            before_fitness = eachChs.fitness
+            eachChs = self.pop[i]
             fitness, scenario_id = self.runner.run(eachChs.scenario)
             # 2. creat new elements or update fitness_score and coverage feat
             eachChs.fitness = fitness
             eachChs.scenario_id = scenario_id
+            after_fitness = eachChs.fitness
 
             with open(self.ga_log, 'a') as f:
                 f.write('global_' + str(self.global_iter) + '_local_' + str(ga_iter))
                 f.write(',')
                 f.write(scenario_id)
+                f.write(',')
+                f.write('before run:' + str(before_fitness))
+                f.write(',')
+                f.write('after run:' + str(after_fitness))
                 f.write('\n')
     
     def select_roulette(self):
@@ -169,6 +179,32 @@ class LocalGeneticMutator(object):
                     v.append(copy.deepcopy(self.pop[j]))
         self.pop = copy.deepcopy(v)
 
+    def select_top2(self):
+        maxFitness = 0
+        v = []
+        for i in range(0, self.pop_size):
+            if self.pop[i].fitness > maxFitness:
+                maxFitness = self.pop[i].fitness
+
+        for i in range(0, self.pop_size):
+            if self.pop[i].fitness == maxFitness:
+                for j in range(int(self.pop_size / 2.0)):
+                    v.append(copy.deepcopy(self.pop[i]))
+                break
+
+        max2Fitness = 0
+        for i in range(0, self.pop_size):
+            if self.pop[i].fitness > max2Fitness and self.pop[i].fitness != maxFitness:
+                max2Fitness = self.pop[i].fitness
+
+        for i in range(0, self.pop_size):
+            if self.pop[i].fitness == max2Fitness:
+                for j in range(int(self.pop_size / 2.0)):
+                    v.append(copy.deepcopy(self.pop[i]))
+                break
+
+        self.pop = copy.deepcopy(v)
+
     def find_best(self):
         best = copy.deepcopy(self.pop[0]) # element object
         bestIndex = 0
@@ -180,7 +216,6 @@ class LocalGeneticMutator(object):
     
     def process(self, global_generation_id):
         
-        self.touched_chs = []
         best, bestIndex = self.find_best()
         self.g_best = copy.deepcopy(best)
 
@@ -193,7 +228,12 @@ class LocalGeneticMutator(object):
             self.touched_chs = []
             self.cross()
             self.mutation(i)
-            self.select_roulette()          
+            if self.selection == 'top':
+                self.select_top2()
+            elif self.selection == 'roulette':
+                self.select_roulette()
+            else:
+                raise RuntimeError('Selection methods require: top or roulette.')      
 
             best, bestIndex = self.find_best()                     # Find the scenario with the best fitness score in current generation 
             self.bests[i] = best                        # Record the scenario with the best fitness score in i th generation
