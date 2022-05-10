@@ -1,17 +1,17 @@
 scenario_env_json: data/ds_1.json
-output_path: outputs/ds_1 # absolute path
+output_path: outputs/ds_1_v2 # absolute path
 lgsvl_map: SanFrancisco_correct
 apollo_map: SanFrancisco
 
 pop_size: 4
 npc_size: 2
-time_size: 5
+time_size: 10
 bounds: [[0, 30], [0, 3]]
-total_sim_time: 15
+total_sim_time: 30
 p_mutation: 0.4
 p_crossover: 0.4
-max_gen: 500
-selection: top
+max_gen: 100
+selection: roulette
 
 # apollo reltaed path config
 default_record_folder: /home/cmf/apollo/apollo6.0/apollo/data/bag # False means ignoring records

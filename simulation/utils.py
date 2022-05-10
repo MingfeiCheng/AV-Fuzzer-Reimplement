@@ -10,13 +10,15 @@ def check_rename_record(default_path, target_path, case_id):
 
     folders = os.listdir(default_path)
     folders = sorted(folders)
-    original_folder = folders[-1]
-    original_fpath = os.path.join(default_path, original_folder)
-    target_fpath = os.path.join(target_path, case_id)
-    shutil.move(original_fpath, target_fpath)
-    logger.info(' --- Move: ' + original_fpath + ' ==> ' + target_fpath)
+    if len(folders) > 0:
+        original_folder = folders[-1]
+        original_fpath = os.path.join(default_path, original_folder)
+        target_fpath = os.path.join(target_path, case_id)
+        shutil.move(original_fpath, target_fpath)
+        logger.info(' --- Move: ' + original_fpath + ' ==> ' + target_fpath)
 
 def enable_modules(dv, modules):
+    # try 5 times
     not_all = True
     while not_all:
         not_all = False

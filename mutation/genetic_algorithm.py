@@ -36,18 +36,18 @@ class GeneticMutator(object):
         self.selection = selection
         self.scenario_name = scenario_name
         self.output_path = output_path
-        self.ga_checkpoints_path = os.path.join(self.output_path, self.scenario_name, 'checkpoints_ga')
+        self.ga_checkpoints_path = os.path.join(self.output_path, 'logs/checkpoints_ga')
 
         if os.path.exists(self.ga_checkpoints_path):
             shutil.rmtree(self.ga_checkpoints_path)
         os.makedirs(self.ga_checkpoints_path)
 
         # TODO: add inner log
-        self.ga_log = os.path.join(self.output_path, 'ga.log')
+        self.ga_log = os.path.join(self.output_path, 'logs/ga.log')
         if os.path.exists(self.ga_log):
             os.remove(self.ga_log)
         
-        self.progress_log = os.path.join(self.output_path, 'progress.log')
+        self.progress_log = os.path.join(self.output_path, 'logs/progress.log')
         if os.path.exists(self.progress_log):
             os.remove(self.progress_log)
     
@@ -109,8 +109,9 @@ class GeneticMutator(object):
             
             i = i + 1
         # Only run simulation for the chromosomes that are touched in this generation
-        logger.info('Generate ' + str(len(self.touched_chs)) + ' mutated scenarios')
         self.touched_chs = set(self.touched_chs)
+        logger.info('Generate ' + str(len(self.touched_chs)) + ' mutated scenarios')
+
         for i in self.touched_chs:
             eachChs = self.pop[i]
             before_fitness = eachChs.fitness

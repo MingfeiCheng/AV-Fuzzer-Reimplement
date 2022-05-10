@@ -33,7 +33,7 @@ class LocalGeneticMutator(object):
         self.selection = selection
         self.scenario_name = scenario_name
         self.output_path = output_path
-        self.ga_checkpoints_path = os.path.join(self.output_path, self.scenario_name, 'checkpoints_ga')
+        self.ga_checkpoints_path = os.path.join(self.output_path, 'logs/checkpoints_ga')
 
         if os.path.exists(self.ga_checkpoints_path):
             shutil.rmtree(self.ga_checkpoints_path)

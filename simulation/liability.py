@@ -1,5 +1,5 @@
 import math
-import matplotlib.pyplot as plt
+import numpy as np
 
 from loguru import logger
 from shapely.geometry import Polygon, LineString
@@ -32,11 +32,11 @@ def right_rotation(coord, theta):
     return [y1, x1]
 
 def get_bbox(agent):
-    agent_theta = agent.transform.rotation.y
-    agent_bbox = agent.bounding_box # min max (x_min, y_min, z_min) (x_max, y_max, z_max)
+    agent_theta = agent['state'].transform.rotation.y
+    agent_bbox = agent['bbox'] # min max (x_min, y_min, z_min) (x_max, y_max, z_max)
         
-    global_x = agent.transform.position.x
-    global_z = agent.transform.position.z
+    global_x = agent['state'].transform.position.x
+    global_z = agent['state'].transform.position.z
     x_min = agent_bbox.min.x + 0.1
     x_max = agent_bbox.max.x - 0.1
     z_min = agent_bbox.min.z + 0.1
@@ -93,12 +93,12 @@ def is_hit_edge(ego, edge_lines):
     return False
 
 def ego_npc_direction(ego, npc):
-    ego_x = ego.transform.position.x
-    ego_z = ego.transform.position.z
-    npc_x = npc.transform.position.x
-    npc_z = npc.transform.position.z
+    ego_x = ego['state'].transform.position.x
+    ego_z = ego['state'].transform.position.z
+    npc_x = npc['state'].transform.position.x
+    npc_z = npc['state'].transform.position.z
 
-    ego_rotation = ego.transform.rotation.y
+    ego_rotation = ego['state'].transform.rotation.y
     unit_direction = [0, 1]
     ego_direction = right_rotation(unit_direction, ego_rotation)
 
@@ -109,12 +109,12 @@ def ego_npc_direction(ego, npc):
     return d
 
 def ego_npc_lateral(ego, npc):
-    ego_x = ego.transform.position.x
-    ego_z = ego.transform.position.z
-    npc_x = npc.transform.position.x
-    npc_z = npc.transform.position.z
+    ego_x = ego['state'].transform.position.x
+    ego_z = ego['state'].transform.position.z
+    npc_x = npc['state'].transform.position.x
+    npc_z = npc['state'].transform.position.z
 
-    ego_rotation = ego.transform.rotation.y
+    ego_rotation = ego['state'].transform.rotation.y
     unit_direction = [1, 0]
     ego_direction = right_rotation(unit_direction, ego_rotation)
 
@@ -125,8 +125,8 @@ def ego_npc_lateral(ego, npc):
     return d
 
 def ego_is_straight(ego, sim):
-    ego_rotation = ego.transform.rotation.y
-    lane_center = sim.map_point_on_lane(ego.state.transform.position)
+    ego_rotation = ego['state'].transform.rotation.y
+    lane_center = sim.map_point_on_lane(ego['state'].transform.position)
     lane_rotation = lane_center.rotation.y
     if abs(ego_rotation - lane_rotation) > 8:
         return False
@@ -168,6 +168,10 @@ def ego_collision_fault(ego, npc, cross_lines):
     """
     coarse filter
     """
+    ego_speed = np.linalg.norm(np.array([ego['state'].velocity.x, ego['state'].velocity.y, ego['state'].velocity.z]))
+    if ego_speed <= 0.1:
+        return False
+
     is_ego_cross_line = ego_cross_line(ego, cross_lines)
     direct_ego_npc = ego_npc_direction(ego, npc)
     if is_ego_cross_line:
@@ -183,4 +187,21 @@ def ego_collision_fault(ego, npc, cross_lines):
             logger.error('Ego fault')
             return True
 
+def compute_danger_fitness(ego, npc, collision=False):
+    if collision:
+        ego_speed = np.array([ego['state'].velocity.x, ego['state'].velocity.y, ego['state'].velocity.z])
+        npc_speed = np.array([npc['state'].velocity.x, npc['state'].velocity.y, npc['state'].velocity.z])
+        fitness = np.linalg.norm(ego_speed - npc_speed)
+        fitness = fitness + 100
+    else:
+        ego_speed = np.array([ego['state'].velocity.x, ego['state'].velocity.y, ego['state'].velocity.z])
+        npc_speed = np.array([npc['state'].velocity.x, npc['state'].velocity.y, npc['state'].velocity.z])
+        speed_norm = np.linalg.norm(ego_speed - npc_speed)
+        location_norm = (get_distance_ego_npc(ego, npc) + 1) ** 2
+        if location_norm <= 0:
+            logger.warning('No collision, but distance norm <= 0')
+            location_norm = 1.0
+        fitness = speed_norm / location_norm
+    
+    return fitness
 

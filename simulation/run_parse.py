@@ -38,9 +38,9 @@ class Runner(object):
         self.default_record_folder = default_record_folder
         logger.info('Default record path: ' + str(self.default_record_folder))
 
-        self.scenario_path = os.path.join(output_path, self.scenario_name, self.SCENARIO_FOLDER)
-        self.result_path = os.path.join(output_path, self.scenario_name, self.RESULT_FOLDER)
-        self.record_path = os.path.join(output_path, self.scenario_name, self.RECORD_FOLDER)
+        self.scenario_path = os.path.join(output_path, 'simulation', self.SCENARIO_FOLDER)
+        self.result_path = os.path.join(output_path, 'simulation', self.RESULT_FOLDER)
+        self.record_path = os.path.join(output_path, 'simulation', self.RECORD_FOLDER)
 
         clear_and_create(self.scenario_path)
         clear_and_create(self.result_path)
@@ -48,7 +48,7 @@ class Runner(object):
 
         self.sim = Simulator(self.default_record_folder, self.record_path, total_sim_time, lgsvl_map, apollo_map) # save record to records/scenario_name/scenario_id
         
-        self.runner_log = os.path.join(output_path, self.scenario_name, 'runner.log')
+        self.runner_log = os.path.join(output_path, 'logs/case_states.log')
         if os.path.exists(self.runner_log):
             os.remove(self.runner_log)
 
@@ -60,23 +60,15 @@ class Runner(object):
             exit(-1)
         # TODO: add test log, to record test results.
         
-        if sim_result['fault'] == 'npc':
-            with open(self.runner_log, 'a') as f:
-                f.write(str(scenario_id) + ' ' + 'npc_fault')
-                f.write('\n')
-            logger.info(' === Simulation Result: Collision NPC Fault')
-        elif sim_result['fault'] == 'ego':
-            with open(self.runner_log, 'a') as f:
-                f.write(str(scenario_id) + ' ' + 'ego_fault')
-                f.write('\n')
-            logger.info(' === Simulation Result: Collision Ego Fault')
-        else:
-            with open(self.runner_log, 'a') as f:
-                f.write(str(scenario_id) + ' ' + 'normal')
-                f.write('\n')
-            logger.info(' === Simulation Result: Normal')
-            
+        sim_fault = sim_result['fault']
+        with open(self.runner_log, 'a') as f:
+            f.write(str(scenario_id))
+            for item in sim_fault:
+                f.write(' ')
+                f.write(str(item))
+            f.write('\n')
         
+       
         self.global_id += 1
         logger.info(' === Simulation Result: ' + str(sim_result))
         logger.info(' === Record ' + scenario_id + ' to ' + self.runner_log)

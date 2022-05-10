@@ -24,7 +24,7 @@ class Fuzzer(object):
 
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
-        log_file = os.path.join(self.output_path, 'logs/system_' + self.scenario_name + '.log')
+        log_file = os.path.join(self.output_path, 'logs/system.log')
         if os.path.exists(log_file):
             os.remove(log_file)
         logger.add(log_file, level=level)

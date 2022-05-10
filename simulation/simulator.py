@@ -9,8 +9,6 @@ import simulation.liability as liability
 from datetime import datetime
 from loguru import logger
 
-from simulation.dreamview import Connection
-
 EGO_VEHICLE_ID = '2e966a70-4a19-44b5-a5e7-64e00a7bc5de'
 
 class Simulator(object):
@@ -42,34 +40,18 @@ class Simulator(object):
         self.maxint = 130
         self.egoFaultDeltaD = 0
 
-        self.init_modules = [
+        self.modules = [
             'Localization',
             'Transform',
             'Routing',
             'Prediction',
             'Planning',
             'Control',
-            'Storytelling'
+            'Storytelling',
         ]
         self.dy_modules = [
             'Recorder',
         ]
-        self.dv = Connection(self.sim, '127.0.0.1')
-        self.dv.set_hd_map(self.apollo_map)  # SanFrancisco borregas_ave Straight2LaneSame
-        self.dv.set_vehicle('Lincoln2017MKZ_LGSVL')
-        util.disnable_modules(self.dv, self.init_modules)
-        util.disnable_modules(self.dv, self.dy_modules)
-        time.sleep(0.5)
-        util.enable_modules(self.dv, self.init_modules)
-        time.sleep(1)
-        module_status = self.dv.get_module_status()
-        not_all = False
-        for module, status in module_status.items():
-            if (not status) and (module in self.init_modules):
-                logger.error('$$Simulator$$ Module is closed: ' + module)
-                not_all = True
-        if not_all:
-            exit(-1)
 
     def connect_lgsvl(self):
         try:
@@ -110,6 +92,12 @@ class Simulator(object):
         Returns:
 
         """
+
+        self.isEgoFault = False
+        self.isHit = False
+        self.mutated_npc_list = []
+        self.fixed_npc_list = []
+
         self.load_json(json_file)
 
         # load ego car
@@ -136,8 +124,6 @@ class Simulator(object):
             raise RuntimeError('Unmatched destination method')
 
         # load mutated npc
-        self.mutated_npc_list = []
-        self.fixed_npc_list = []
         npcs = self.data_prime['agents']['npcs']
         for m_npc in npcs:
             npc_type = m_npc['type']
@@ -172,75 +158,12 @@ class Simulator(object):
         self.cross_lines = self.data_prime['lines']['cross_lines']
         self.edge_lines = self.data_prime['lines']['edge_lines']
 
-    def brakeDist(self, speed):
-        dBrake = 0.0467 * pow(speed, 2.0) + 0.4116 * speed - 1.9913 + 0.5
-        if dBrake < 0:
-            dBrake = 0
-        return dBrake
-    
-    def findCollisionDeltaD(self, ego, npc):
-        d = liability.get_distance_ego_npc(ego, npc)
-        return d - self.brakeDist(ego.state.speed)
-
-    def findDeltaD(self, ego, npc):
-        d = liability.get_distance_ego_npc(ego, npc)
-        deltaD = self.maxint # The smaller delta D, the better
-        deltaDFront = self.maxint
-        deltaDSide = self.maxint
-
-        # When npc is in front
-        if 4.6 < liability.ego_npc_direction(ego, npc) < 20:
-            if liability.ego_npc_lateral(ego, npc) < 2:
-                deltaDFront = d - self.brakeDist(ego.state.speed)
-                logger.info(" --- Delta D Front: " + str(deltaDFront))
-
-        # When ego is changing line to npc's front
-        if 4.6 < liability.ego_npc_direction(npc, ego) < 20:
-            if liability.ego_npc_lateral(npc, ego) < 2 and (not liability.ego_is_straight(ego, self.sim)):
-                deltaDSide = d - self.brakeDist(npc.state.speed)
-                logger.info(" --- Delta D Side: " + str(deltaDSide))
-   
-        deltaD = min(deltaDSide, deltaDFront)
-
-        return deltaD
-
-    def findFitness(self, deltaDlist, dList, isHit, hitTime):
-       # The higher the fitness, the better.
-
-       minDeltaD = self.maxint
-       for npc in deltaDlist: # ith NPC
-            hitCounter = 0
-            for deltaD in npc:
-                if isHit == True and hitCounter == hitTime:
-                   break
-                if deltaD < minDeltaD:
-                    minDeltaD = deltaD # Find the min deltaD over time slices for each NPC as the fitness
-                hitCounter += 1
-       logger.info(" --- minDeltaD: " + str(minDeltaD))
-
-       minD = self.maxint
-       for npc in dList: # ith NPC
-            hitCounter = 0
-            for d in npc:
-                if isHit == True and hitCounter == hitTime:
-                   break
-                if d < minD:
-                    minD = d
-                hitCounter += 1
-       logger.info(" --- minD: " + str(minD))
-
-       fitness = 0.5 * minD + 0.5 * minDeltaD
-
-       return fitness * -1
-
     def runSimulation(self, scenario_obj, json_file, case_id):
 
+        #exit_handler()
         now = datetime.now()
         date_time = now.strftime("%m-%d-%Y-%H-%M-%S")
         logger.info(' === Simulation Start:  ['  + date_time + '] ===')
-
-        self.isEgoFault = False
-        self.isHit = False
 
         self.sim.reset()
         self.init_environment(json_file)
@@ -248,164 +171,266 @@ class Simulator(object):
         time_slice_size = len(scenario_obj[0])
         mutated_npc_num = len(scenario_obj)
 
-        logger.debug(" --- Sim mutated npc size: " + str(len(self.mutated_npc_list)))
-        logger.debug(' --- Config mutated npc size: ' + str(mutated_npc_num))
-        logger.debug(' --- Config fixed npc size: ' + str(len(self.fixed_npc_list)))
-
         assert mutated_npc_num == len(self.mutated_npc_list)
-        
-        deltaDList = [[self.maxint for i in range(time_slice_size)] for j in range(mutated_npc_num)] # 1-D: NPC; 2-D: Time Slice
-        dList = [[self.maxint for i in range(time_slice_size)] for j in range(mutated_npc_num)] # 1-D: NPC; 2-D: Time Slice
 
-        def on_destination_reached():
-            pass
+        # simulation info
+        simulation_recording = {
+            'bbox': {
+                'ego' : self.ego.bounding_box
+            },
+            'frames': {
+
+            }
+        }
+        for npc_i in range(mutated_npc_num):
+            simulation_recording['bbox']['npc_' + str(npc_i)] = self.mutated_npc_list[npc_i].bounding_box
+        
+        global collision_info
+        global accident_happen
+        global time_index
+        
+        collision_info = None
+        accident_happen = False
 
         def on_collision(agent1, agent2, contact):
-            #util.print_debug(" --- On Collision, ego speed: " + str(agent1.state.speed) + ", NPC speed: " + str(agent2.state.speed))
-            if self.isHit:
-                return
-            
-            self.isHit = True
-            
-            if agent2 is None or agent1 is None:
-                self.isEgoFault = True
-                logger.info(" --- Hit road obstacle --- ")
-                return
+            global accident_happen
+            global collision_info
+            global time_index
 
-            apollo = agent1
-            npcVehicle = agent2
+            accident_happen = True
+            collision_info = {}
 
-            if agent2.name == EGO_VEHICLE_ID:
-                apollo = agent2
-                npcVehicle = agent1
-            
-            logger.debug(' --- Apollo Name: ' + apollo.name)
-            logger.debug(' --- npcVehicle Name: ' + npcVehicle.name)
-            logger.debug(" --- On Collision, ego speed: " + str(apollo.state.speed) + ", NPC speed: " + str(npcVehicle.state.speed))
-            
-            if apollo.state.speed <= 0.005:
-               self.isEgoFault = False
-               return
+            name1 = "STATIC OBSTACLE" if agent1 is None else agent1.name
+            name2 = "STATIC OBSTACLE" if agent2 is None else agent2.name
+            logger.error(str(name1) + " collided with " + str(name2) + " at " + str(contact))
 
-            self.isEgoFault = liability.ego_collision_fault(apollo, npcVehicle, self.cross_lines)
+            agent1_info = [agent1.state, agent1.bounding_box]
+                        
+            if not agent2:
+                agent2_info = [None, None]
+            else:
+                agent2_info = [agent2.state, agent2.bounding_box]
             
-                    
-        self.ego.on_collision(on_collision)
+            if contact:
+                contact_loc = [contact.x, contact.y, contact.z]
+            
+            collision_info['time'] = time_index
+            collision_info['ego'] = agent1_info
+            collision_info['npc'] = agent2_info
+            collision_info['contact'] = contact_loc
+
+            self.sim.stop()
+        
+        # INIT apollo      
         self.ego.connect_bridge(address='127.0.0.1', port=9090) #address, port
-        self.dv.set_ego(self.ego)
+        self.ego.on_collision(on_collision)
+        
+        times = 0
+        success = False
+        while times < 3:
+            try:
+                dv = lgsvl.dreamview.Connection(self.sim, self.ego, os.environ.get("BRIDGE_HOST", "127.0.0.1"))
+                dv.set_hd_map(self.apollo_map)
+                dv.set_vehicle('Lincoln2017MKZ_LGSVL')
+                dv.setup_apollo(self.destination.x, self.destination.z, self.modules, default_timeout=30)
+                success = True
+                break
+            except:
+                logger.warning('Fail to spin up apollo, try again!')
+                times += 1
+        if not success:
+            raise RuntimeError('Fail to spin up apollo')
+
         if self.default_record_folder:
-            util.enable_modules(self.dv, self.dy_modules)
-        self.dv.set_destination(x_long_east=self.destination.x, z_lat_north=self.destination.z)
-        logger.debug(' --- destination: ' + str(self.destination.x) + ',' + str(self.destination.z))
-        time.sleep(1)
+            util.disnable_modules(dv, self.dy_modules)
+            time.sleep(1)
+            util.enable_modules(dv, self.dy_modules)
+        
+        dv.set_destination(self.destination.x, self.destination.z)
+        logger.info(' --- destination: ' + str(self.destination.x) + ',' + str(self.destination.z))
+        
+        delay_t = 5
+        time.sleep(delay_t)
 
         for npc in self.mutated_npc_list:
             npc.follow_closest_lane(True, 0)
-        
+
         for npc in self.fixed_npc_list:
-            npc.follow_closest_lane(True, 13.4)     
+            npc.follow_closest_lane(True, 13.4)
 
         # Frequency of action change of NPCs
         total_sim_time = self.total_sim_time
         action_change_freq = total_sim_time / time_slice_size
-        hit_time = time_slice_size
+        time_index = 0
+        
+        # record start
+        simulation_recording['frames'][time_index] = {
+            'ego': self.ego.state
+        }
+
+        for npc_i in range(mutated_npc_num):
+            simulation_recording['frames'][time_index]['npc_' + str(npc_i)] = self.mutated_npc_list[npc_i].state
         
         for t in range(0, int(time_slice_size)):
+            # check module states
+            
+            
+                    
+            # actionChangeFreq seconds
             # For every npc
             i = 0
             for npc in self.mutated_npc_list:
                 npc.follow_closest_lane(True, scenario_obj[i][t][0])
                 turn_command = scenario_obj[i][t][1]
+
                 #<0: no turn; 1: left; 2: right>
                 if turn_command == 1:
                     #direction = "LEFT"
                     npc.change_lane(True)
+                    
                 elif turn_command == 2:
                     #direction = "RIGHT"
                     npc.change_lane(False)
-                i += 1
-
-            if self.isEgoFault:
-                self.isHit = True
-            
-            if self.isHit:
-                hit_time = t
-                break
-           
-            # Record the min delta D and d
-            minDeltaD = self.maxint
-            npcDeltaAtTList = [0 for i in range(mutated_npc_num)]
-            
-            minD = self.maxint
-            npcDAtTList = [0 for i in range(mutated_npc_num)]
-
-            for j in range(0, int(action_change_freq) * 4):
-
-                # Stop if there is accident
-                # 1 yellow line
-                for yellow_line in self.yellow_lines:
-                    if liability.ego_yellow_line_fault(self.ego, yellow_line):
-                        self.isEgoFault = True
-                        logger.info(' --- Hit yellow line')
-                        break
-                
-                # 2 edge line
-                for edge_line in self.edge_lines:
-                    if liability.ego_edge_line_fault(self.ego, edge_line):
-                        self.isEgoFault = True
-                        logger.info(' --- Hit edge line')
-                        break
                     
-                k = 0 # k th npc
-                for npc in self.mutated_npc_list:
-                    # Update delta D
-                    curDeltaD = self.findDeltaD(self.ego, npc)
-                    if minDeltaD > curDeltaD:
-                        minDeltaD = curDeltaD
-                    npcDeltaAtTList[k] = minDeltaD
+                i += 1        
 
-                    # Update d
-                    curD = liability.get_distance_ego_npc(self.ego, npc)
-                    if minD > curD:
-                        minD = curD
-                    npcDAtTList[k] = minD
+            for j in range(0, int(action_change_freq) * 10):
+                module_status_mark = True
+                while module_status_mark:
+                    module_status_mark = False
+                    module_status = dv.get_module_status()
+                    for module, status in module_status.items():
+                        if (not status) and (module in self.modules):
+                            logger.warning('$$Simulator$$ Module is closed: ' + module + ' ==> restart')
+                            dv.enable_module(module)
+                            time.sleep(0.5)
+                            module_status_mark = True
+                time_index += 1
 
-                    k += 1
-                
-                if self.isEgoFault:
-                    self.isHit = True
-                
-                if self.isHit:
-                    break
+                self.sim.run(0.1)
 
-                self.sim.run(0.25)
+                simulation_recording['frames'][time_index] = {
+                    'ego': self.ego.state
+                }
 
-            ####################################    
-            k = 0 # kth npc 
-            for npc in self.mutated_npc_list:
-                deltaDList[k][t] = npcDeltaAtTList[k]
-                dList[k][t] = npcDAtTList[k]
-                k += 1
-        
+                for npc_i in range(len(self.mutated_npc_list)):
+                    simulation_recording['frames'][time_index]['npc_' + str(npc_i)] = self.mutated_npc_list[npc_i].state
+
+    
         if self.default_record_folder:
-            util.disnable_modules(self.dv, self.dy_modules)
+            util.disnable_modules(dv, self.dy_modules)
             time.sleep(0.5)
 
         # check new folder and move -> save folder
         if self.default_record_folder:
             util.check_rename_record(self.default_record_folder, self.target_record_folder, case_id)
 
-        # Process deltaDList and compute fitness scores
-        # Make sure it is not 0, cannot divide by 0 in GA
-        fitness_score = self.findFitness(deltaDList, dList, self.isHit, hit_time)
-        resultDic = {}
-        resultDic['fitness'] = (fitness_score + self.maxint) / float(len(self.mutated_npc_list) - 1 ) # Try to make sure it is positive
-        resultDic['fault'] = ''
-        if self.isEgoFault:
-            resultDic['fault'] = 'ego'
-        elif self.isHit:
-            resultDic['fault'] = 'npc'
-        logger.info(" === Finish simulation === ")
-        logger.debug(resultDic)
+        
+        # compute fitness score & check other bugs such as line cross or else
+        '''
+        
 
-        return resultDic
+        global collision_info
+        global accident_happen
+        
+        collision_info = None
+        accident_happen = False
+        
+        '''
+        # Step 1 obtain time
+        simulation_slices = max(simulation_recording['frames'].keys())
+
+        '''
+        simulation_recording[time_index] = {
+                    'ego': self.ego.transform,
+                    'npc': []
+                }
+        '''
+        fault = []
+        max_fitness = -1111
+        # Step 2 compute distance and check line error and filter npc_fault
+        for t in range(simulation_slices):
+            simulation_frame = simulation_recording['frames'][t]
+            ego_info = {
+                'state': simulation_frame['ego'],
+                'bbox': simulation_recording['bbox']['ego']
+            }            
+            # compute distance
+            for npc_i in range(len(self.mutated_npc_list)):
+                npc_id = 'npc_' + str(npc_i)
+                npc_info = {
+                    'state': simulation_frame[npc_id],
+                    'bbox': simulation_recording['bbox'][npc_id]
+                }
+                
+                npc_ego_fitness = liability.compute_danger_fitness(ego_info, npc_info, False)
+                
+                if npc_ego_fitness > max_fitness:
+                    max_fitness = npc_ego_fitness
+            
+            # check line
+            for yellow_line in self.yellow_lines:
+                hit_yellow_line = liability.ego_yellow_line_fault(ego_info, yellow_line)
+                if hit_yellow_line:
+                    fault.append('hit_yellow_line')
+            
+            for edge_line in self.edge_lines:
+                hit_edge_line = liability.ego_edge_line_fault(ego_info, edge_line)
+                if hit_edge_line:
+                    fault.append('hit_edge_line')
+            
+        # Step 3 if collision, check is npc fault
+        '''
+        agent1_info = [agent1.transform, agent1.state]
+                        
+            if not agent2:
+                agent2_info = [None, None]
+            else:
+                agent2_info = [agent2.transform, agent2.state]
+            
+            if contact:
+                contact_loc = [contact.x, contact.y, contact.z]
+            
+            collision_info['time'] = time_index
+            collision_info['ego'] = agent1_info
+            collision_info['npc'] = agent2_info
+            collision_info['contact'] = contact_loc
+
+        '''
+        if collision_info is not None:
+            ego_info = {
+                'state': collision_info['ego'][0],
+                'bbox': collision_info['ego'][1]
+            }
+
+            npc_info = {
+                'state': collision_info['npc'][0],
+                'bbox': collision_info['npc'][1]
+            }
+            
+            ego_fault = liability.ego_collision_fault(ego_info, npc_info, self.cross_lines)
+            if ego_fault:
+                fault.append('ego_fault')
+            else:
+                fault.append('npc_fault')
+            
+            fitness = liability.compute_danger_fitness(ego_info, npc_info, True)
+            if fitness <= max_fitness:
+                logger.error('Please increase K in liability.compute_danger_fitness: Collision - ' + str(fitness) + 'No Collision - ' + str(max_fitness))
+                raise RuntimeError('liability.compute_danger_fitness parameter setting is not right.')
+            else:
+                max_fitness = fitness
+
+        if len(fault) == 0:
+            fault.append('normal')
+        
+        #fitness_score = self.findFitness(deltaDList, dList, self.isHit, hit_time)
+        
+        result_dict = {}
+        result_dict['fitness'] = max_fitness
+        #(fitness_score + self.maxint) / float(len(self.mutated_npc_list) - 1 ) # Try to make sure it is positive
+        result_dict['fault'] = fault
+        
+        logger.info(' === Simulation End === ')
+
+        return result_dict
